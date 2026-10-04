@@ -70,6 +70,7 @@ void CProcessInfo::ResetVideoCodecInfo()
   m_videoDeintMethod = "unknown";
   m_videoPixelFormat = "unknown";
   m_videoStereoMode.clear();
+  m_full3DSourceLayout = 0;
   m_videoWidth = 0;
   m_videoHeight = 0;
   m_videoFPS = 0.0;
@@ -174,6 +175,18 @@ std::string CProcessInfo::GetVideoStereoMode()
   std::unique_lock lock(m_videoCodecSection);
 
   return m_videoStereoMode;
+}
+
+void CProcessInfo::SetFull3DSourceLayout(int layout)
+{
+  std::unique_lock lock(m_videoCodecSection);
+  m_full3DSourceLayout = layout;
+}
+
+int CProcessInfo::GetFull3DSourceLayout()
+{
+  std::unique_lock lock(m_videoCodecSection);
+  return m_full3DSourceLayout;
 }
 
 void CProcessInfo::SetVideoDimensions(int width, int height)

@@ -18,6 +18,7 @@
 #include "settings/AdvancedSettings.h"
 #include "settings/Settings.h"
 #include "settings/SettingsComponent.h"
+#include "rendering/RenderSystem.h"
 #include "utils/MathUtils.h"
 #include "utils/log.h"
 #include "windowing/GraphicContext.h"
@@ -809,6 +810,116 @@ bool CVideoPlayerVideo::ProcessDecoderOutput(double &frametime, double &pts)
       {
         m_picture.stereoMode = stereoMode;
       }
+    }
+
+    // FULL3D_FP_KODI_V030RC1: selectable conversion of full-resolution packed stereo to
+    // the existing hardware/frame-packed mode. Explicit FSBS/FTAB filename
+    // hints are authoritative; ordinary SBS/TAB still requires canonical
+    // full-resolution geometry. Policy: 0=Auto, 1=Keep SBS/TAB, 2=Frame packed.
+    const int full3dOutput = CServiceBroker::GetSettingsComponent()->GetSettings()->GetInt(
+        "videoscreen.full3doutput");
+    const bool full3dHardwareSupported = CServiceBroker::GetRenderSystem() &&
+        CServiceBroker::GetRenderSystem()->SupportsStereo(RenderStereoMode::HARDWAREBASED);
+    const bool full3dUseFramePacking =
+        full3dOutput == 2 || (full3dOutput == 0 && full3dHardwareSupported);
+
+    int full3dSourceLayout = 0; // 0=none, 1=LR/SBS, 2=TB/TAB
+    bool full3dExplicit = false;
+
+    // Kodi can already have mapped the public stereo string to block_lr/block_rl
+    // for HARDWAREBASED output before this hook runs. Use demux intent plus
+    // canonical full-resolution geometry so source layout is not lost.
+    const auto configuredStereoMode =
+        static_cast<RenderStereoMode>(m_processInfo.GetVideoSettings().m_StereoMode);
+    const bool full3dHardwareIntent =
+        configuredStereoMode == RenderStereoMode::HARDWAREBASED ||
+        m_picture.stereoMode == "block_lr" || m_picture.stereoMode == "block_rl";
+    const bool full3dSbsIntent =
+        m_hints.stereo_mode == "left_right" || m_hints.stereo_mode == "right_left" ||
+        m_hints.stereo_mode == "full_left_right" ||
+        m_picture.stereoMode == "left_right" || m_picture.stereoMode == "right_left" ||
+        (full3dHardwareIntent && m_picture.iWidth == 3840 && m_picture.iHeight == 1080);
+    const bool full3dTabIntent =
+        m_hints.stereo_mode == "top_bottom" || m_hints.stereo_mode == "bottom_top" ||
+        m_hints.stereo_mode == "full_top_bottom" ||
+        m_picture.stereoMode == "top_bottom" || m_picture.stereoMode == "bottom_top" ||
+        (full3dHardwareIntent && m_picture.iWidth == 1920 && m_picture.iHeight == 2160);
+
+    if (m_hints.stereo_mode == "full_left_right")
+    {
+      full3dSourceLayout = 1;
+      full3dExplicit = true;
+      m_picture.stereoMode = "left_right";
+    }
+    else if (m_hints.stereo_mode == "full_top_bottom")
+    {
+      full3dSourceLayout = 2;
+      full3dExplicit = true;
+      m_picture.stereoMode = "top_bottom";
+    }
+    else if (m_picture.iWidth == 3840 && m_picture.iHeight == 1080 && full3dSbsIntent)
+    {
+      full3dSourceLayout = 1;
+    }
+    else if (m_picture.iWidth == 1920 && m_picture.iHeight == 2160 && full3dTabIntent)
+    {
+      full3dSourceLayout = 2;
+    }
+
+    bool full3dGeometrySane = full3dSourceLayout != 0;
+    if (full3dExplicit && full3dSourceLayout == 1)
+    {
+      full3dGeometrySane = m_picture.iWidth > 0 && m_picture.iHeight > 0 &&
+                           (m_picture.iWidth % 2) == 0 &&
+                           (m_picture.iWidth / 2) <= 1920 && m_picture.iHeight <= 1080;
+    }
+    else if (full3dExplicit && full3dSourceLayout == 2)
+    {
+      full3dGeometrySane = m_picture.iWidth > 0 && m_picture.iHeight > 0 &&
+                           (m_picture.iHeight % 2) == 0 &&
+                           m_picture.iWidth <= 1920 && (m_picture.iHeight / 2) <= 1080;
+    }
+
+    if (full3dExplicit && !full3dGeometrySane)
+    {
+      CLog::Log(LOGWARNING,
+                "Full3D: explicit FSBS/FTAB marker has unsupported geometry {}x{}; keeping normal SBS/TAB output",
+                m_picture.iWidth, m_picture.iHeight);
+    }
+
+    if (full3dUseFramePacking && full3dGeometrySane)
+    {
+      if (m_processInfo.GetFull3DSourceLayout() != full3dSourceLayout)
+      {
+        CLog::Log(LOGINFO,
+                  "Full3D: selected layout={} for {}x{} source (hint='{}', picture='{}', configured={})",
+                  full3dSourceLayout, m_picture.iWidth, m_picture.iHeight,
+                  m_hints.stereo_mode, m_picture.stereoMode,
+                  static_cast<int>(configuredStereoMode));
+      }
+      m_processInfo.SetFull3DSourceLayout(full3dSourceLayout);
+      if (full3dSourceLayout == 1)
+      {
+        if (m_picture.stereoMode == "left_right")
+          m_picture.stereoMode = "block_lr";
+        else if (m_picture.stereoMode == "right_left")
+          m_picture.stereoMode = "block_rl";
+      }
+      else if (full3dSourceLayout == 2)
+      {
+        if (m_picture.stereoMode == "top_bottom")
+          m_picture.stereoMode = "block_lr";
+        else if (m_picture.stereoMode == "bottom_top")
+          m_picture.stereoMode = "block_rl";
+      }
+
+      if (full3dExplicit)
+        CLog::Log(LOGINFO, "Full3D: explicit filename marker selected layout={} for {}x{} source",
+                  full3dSourceLayout, m_picture.iWidth, m_picture.iHeight);
+    }
+    else
+    {
+      m_processInfo.SetFull3DSourceLayout(0);
     }
 
     // if frame has a pts (usually originating from demux packet), use that

@@ -2213,6 +2213,35 @@ CDemuxStream* CDVDDemuxFFmpeg::AddStream(int streamIdx)
         if (!stereoMode.empty())
           st->stereo_mode = stereoMode;
 
+          // FULL3D_EXPLICIT_FILENAME_V027: FSBS/FTAB is an explicit declaration.
+          // Keep this as a private stream hint so normal Kodi SBS/TAB behaviour is unchanged.
+          if (m_pInput)
+          {
+            std::string full3dName = m_pInput->GetFileName();
+            StringUtils::ToLower(full3dName);
+            const auto hasTag = [&full3dName](const std::string& tag)
+            {
+              auto boundary = [](char c) { return c == '.' || c == '_' || c == '-' || c == ' '; };
+              size_t pos = 0;
+              while ((pos = full3dName.find(tag, pos)) != std::string::npos)
+              {
+                const size_t after = pos + tag.size();
+                const bool leftOk = pos == 0 || boundary(full3dName[pos - 1]);
+                const bool rightOk = after == full3dName.size() || boundary(full3dName[after]);
+                if (leftOk && rightOk)
+                  return true;
+                pos = after;
+              }
+              return false;
+            };
+
+            if (hasTag("fsbs"))
+              st->stereo_mode = "full_left_right";
+            else if (hasTag("ftab"))
+              st->stereo_mode = "full_top_bottom";
+          }
+
+
 
         if (m_pInput->IsStreamType(DVDSTREAM_TYPE_DVD))
         {

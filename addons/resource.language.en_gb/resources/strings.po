@@ -26046,3 +26046,26 @@ msgstr ""
 msgctxt "#40804"
 msgid "{0:.1f} dB"
 msgstr ""
+
+
+#. Full-resolution stereoscopic output policy
+#: system/settings/settings.xml
+msgctxt "#39050"
+msgid "Full-resolution SBS/TAB output"
+msgstr ""
+
+#. Help for full-resolution stereoscopic output policy
+#: system/settings/settings.xml
+msgctxt "#39051"
+msgid "Choose whether full-resolution side-by-side and top-and-bottom video is kept in its packed format or converted to HDMI frame-packed 3D. Auto uses frame packing when the render system reports hardware-based stereo support. Explicit FSBS/FTAB filename markers declare a full-resolution source; ordinary SBS/TAB is only auto-promoted at canonical full-resolution geometry."
+msgstr ""
+
+#: system/settings/settings.xml
+msgctxt "#39052"
+msgid "Keep SBS/TAB"
+msgstr ""
+
+#: system/settings/settings.xml
+msgctxt "#39053"
+msgid "Frame packed"
+msgstr ""

@@ -3358,6 +3358,18 @@
           </updates>
           <control type="list" format="integer"/>
         </setting>
+        <setting id="videoscreen.full3doutput" parent="videoscreen.stereoscopicmode" type="integer" label="39050" help="39051">
+          <level>3</level>
+          <default>0</default> <!-- Auto -->
+          <constraints>
+            <options>
+              <option label="13416">0</option> <!-- Auto -->
+              <option label="39052">1</option> <!-- Keep SBS/TAB -->
+              <option label="39053">2</option> <!-- Frame packed -->
+            </options>
+          </constraints>
+          <control type="list" format="string"/>
+        </setting>
       </group>
       <group id="5" label="496">
         <setting id="videoscreen.noofbuffers" type="integer" label="36043" help="36552">

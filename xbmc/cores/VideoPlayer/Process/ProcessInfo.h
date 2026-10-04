@@ -42,6 +42,8 @@ public:
   std::string GetVideoPixelFormat();
   void SetVideoStereoMode(const std::string &mode);
   std::string GetVideoStereoMode();
+  void SetFull3DSourceLayout(int layout);
+  int GetFull3DSourceLayout();
   void SetVideoDimensions(int width, int height);
   void GetVideoDimensions(int &width, int &height);
   void SetVideoFps(float fps);
@@ -155,6 +157,7 @@ protected:
   std::string m_videoDeintMethod;
   std::string m_videoPixelFormat;
   std::string m_videoStereoMode;
+  int m_full3DSourceLayout = 0; // 0=none, 1=LR/SBS, 2=TB/TAB
   int m_videoWidth;
   int m_videoHeight;
   float m_videoFPS;

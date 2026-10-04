@@ -305,6 +305,9 @@ public:
 #define MODE_3D_TO_2D_B         0x00000a02
 #define MODE_3D_OUT_TB          0x00010000
 #define MODE_3D_OUT_LR          0x00020000
+#define MODE_FORCE_3D_LR        0x01000000
+#define MODE_FORCE_3D_TB        0x02000000
+#define MODE_3D_FP              0x04000000  // FULL3D_FP_KODI_V030RC1
 
 #define PTS_FREQ        90000
 #define UNIT_FREQ       96000
@@ -2699,6 +2702,22 @@ void CAMLCodec::CloseDecoder()
 
   ShowMainVideo(false);
 
+  // FULL3D_FP_KODI_TEARDOWN_V023: leave the hidden video plane with sane
+  // 2D geometry. This also makes the next decoder session independent of the
+  // preceding 2205-line frame-packed window.
+  m_processInfo.SetFull3DSourceLayout(0);
+  const RESOLUTION closeVideoRes =
+      CServiceBroker::GetWinSystem()->GetGfxContext().GetVideoResolution();
+  const RESOLUTION_INFO& closeInfo =
+      CDisplaySettings::GetInstance().GetResolutionInfo(closeVideoRes);
+  if (closeInfo.iScreenWidth > 0 && closeInfo.iScreenHeight > 0)
+  {
+    char closeVideoAxis[64] = {};
+    snprintf(closeVideoAxis, sizeof(closeVideoAxis), "0 0 %d %d",
+             closeInfo.iScreenWidth - 1, closeInfo.iScreenHeight - 1);
+    CSysfsPath("/sys/class/video/axis", closeVideoAxis);
+  }
+
   CloseAmlVideo();
 }
 
@@ -3354,6 +3373,15 @@ void CAMLCodec::SetVideoSaturation(const int saturation)
 
 void CAMLCodec::SetVideoRect(const CRect &SrcRect, const CRect &DestRect)
 {
+  // FULL3D_FP_KODI_TEARDOWN_V023: renderer teardown can race decoder close.
+  // Never re-show the video plane or re-apply a stale frame-packed axis after
+  // CloseDecoder() has marked the codec closed.
+  if (!m_opened)
+  {
+    ShowMainVideo(false);
+    return;
+  }
+
   // this routine gets called every video frame
   // and is in the context of the renderer thread so
   // do not do anything stupid here.
@@ -3490,6 +3518,19 @@ void CAMLCodec::SetVideoRect(const CRect &SrcRect, const CRect &DestRect)
     // 3D frame packed output: get the screen height from the graphic context
     // (will work in fullscreen mode only)
     RESOLUTION_INFO info = CServiceBroker::GetWinSystem()->GetGfxContext().GetResInfo();
+    const int full3dSourceLayout = m_processInfo.GetFull3DSourceLayout();
+    if (full3dSourceLayout != 0)
+    {
+      // FULL3D_FP_KODI_V030RC1: packed FSBS/FTAB aspect belongs to the transport, not one eye.
+      // Use the full 16:9 display width/height as the per-eye destination before
+      // extending the canvas to 1080 + blank + 1080 frame-packed timing.
+      dst_rect.x1 = display.x1;
+      dst_rect.x2 = display.x2;
+      dst_rect.y1 = display.y1;
+      CLog::Log(LOGINFO,
+                "Full3D: correcting packed destination rectangle to full-eye frame before FP (layout={})",
+                full3dSourceLayout);
+    }
     dst_rect.y2 = info.iHeight * 2 + info.iBlanking;
   }
 
@@ -3519,8 +3560,33 @@ void CAMLCodec::SetVideoRect(const CRect &SrcRect, const CRect &DestRect)
           break;
         }
       default:
-        aml_set_3d_video_mode(MODE_3D_DISABLE, false, mvc_view_mode);
-        break;
+        {
+          unsigned int packed3d_mode = MODE_3D_DISABLE;
+          const std::string videoStereoMode = m_processInfo.GetVideoStereoMode();
+          const int full3dSourceLayout = m_processInfo.GetFull3DSourceLayout();
+
+          if (m_guiStereoMode == RenderStereoMode::HARDWAREBASED &&
+              (videoStereoMode == "block_lr" || videoStereoMode == "block_rl"))
+          {
+            if (full3dSourceLayout == 1)
+              packed3d_mode = MODE_3D_ENABLE | MODE_FORCE_3D_LR | MODE_3D_FP;
+            else if (full3dSourceLayout == 2)
+              packed3d_mode = MODE_3D_ENABLE | MODE_FORCE_3D_TB | MODE_3D_FP;
+
+            if (packed3d_mode != MODE_3D_DISABLE && videoStereoMode == "block_rl")
+              packed3d_mode |= MODE_3D_LR_SWITCH;
+          }
+
+          if (packed3d_mode != MODE_3D_DISABLE)
+            CLog::Log(LOGINFO,
+                      "CAMLCodec: full-resolution packed 3D -> HDMI frame packing, layout={}, mode=0x{:x}",
+                      full3dSourceLayout, packed3d_mode);
+
+          // FULL3D_FP_KODI_V030RC1: false is intentional. The decoded source has no HDMI
+          // frame-packing blank lines; common_drivers creates that geometry.
+          aml_set_3d_video_mode(packed3d_mode, false, mvc_view_mode);
+          break;
+        }
     }
   }
 
