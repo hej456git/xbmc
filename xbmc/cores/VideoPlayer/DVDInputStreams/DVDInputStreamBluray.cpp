@@ -16,6 +16,7 @@
 #include "LangInfo.h"
 #include "ServiceBroker.h"
 #include "URL.h"
+#include "cores/DataCacheCore.h"
 #include "filesystem/BlurayCallback.h"
 #include "filesystem/SpecialProtocol.h"
 #include "settings/Settings.h"
@@ -514,12 +515,15 @@ bool CDVDInputStreamBluray::Open()
 
   OpenNextStream();
 
+  CServiceBroker::GetDataCacheCore().SetBluray3DNav(m_navmode && disc_info->content_exist_3D);
+
   return true;
 }
 
 // close file and reset everything
 void CDVDInputStreamBluray::Close()
 {
+  CServiceBroker::GetDataCacheCore().SetBluray3DNav(false);
   CloseMVCDemux();
   FreeTitleInfo();
 

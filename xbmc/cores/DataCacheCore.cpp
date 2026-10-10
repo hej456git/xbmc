@@ -29,6 +29,7 @@ CDataCacheCore& CDataCacheCore::GetInstance()
 
 void CDataCacheCore::Reset()
 {
+  SetBluray3DNav(false);
   {
     std::unique_lock lock(m_stateSection);
     m_stateInfo = {};
@@ -48,6 +49,14 @@ void CDataCacheCore::Reset()
     m_contentInfo.Reset();
   }
   m_timeInfo = {};
+}
+
+void CDataCacheCore::SetBluray3DNav(bool active)
+{
+  m_bluray3DReady = false;
+  m_bluray3DResolution = RES_INVALID;
+  m_bluray3DNav = active;
+  SignalVideoInfoChange();
 }
 
 void CDataCacheCore::ResetAudioCache()

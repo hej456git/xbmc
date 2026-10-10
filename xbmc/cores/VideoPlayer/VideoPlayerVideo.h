@@ -73,7 +73,7 @@ public:
   std::string GetPlayerInfo() override;
   int GetVideoBitrate() override;
   void SetSpeed(int iSpeed) override;
-  bool SupportsExtention() const override { return m_pVideoCodec && m_pVideoCodec->SupportsExtention(); }
+  bool SupportsExtention() const override { return m_supportsExtention.load(); }
 
   int  GetDataLevel() const { return m_messageQueue.GetLevel(true); }
   void SetMaxDataSize(int iMaxDataSize) { m_messageQueue.SetMaxDataSize(iMaxDataSize); }
@@ -136,6 +136,7 @@ protected:
   bool m_paused;
   IDVDStreamPlayer::ESyncState m_syncState;
   std::atomic_bool m_bAbortOutput;
+  std::atomic_bool m_supportsExtention{false};
 
   BitstreamStats m_videoStats;
 

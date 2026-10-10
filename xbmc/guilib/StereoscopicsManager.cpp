@@ -255,7 +255,8 @@ RenderStereoMode CStereoscopicsManager::GetStereoModeByUserChoice() const
 RenderStereoMode CStereoscopicsManager::GetStereoModeOfPlayingVideo(void) const
 {
   RenderStereoMode mode = RenderStereoMode::OFF;
-  std::string playerMode = GetVideoStereoMode();
+  const std::string playerMode =
+      CServiceBroker::GetDataCacheCore().IsBluray3DNav() ? "block_lr" : GetVideoStereoMode();
 
   if (!playerMode.empty())
   {
@@ -399,6 +400,12 @@ void CStereoscopicsManager::OnSettingChanged(const std::shared_ptr<const CSettin
     CLog::Log(LOGDEBUG, "StereoscopicsManager: stereo mode setting changed to {}",
               ConvertGuiStereoModeToString(mode));
     ApplyStereoMode(mode);
+    auto& cache = CServiceBroker::GetDataCacheCore();
+    if (cache.IsBluray3DNav())
+    {
+      cache.SetBluray3DResolution(RES_INVALID);
+      Notify();
+    }
   }
 }
 
@@ -561,6 +568,26 @@ bool CStereoscopicsManager::IsVideoStereoscopic() const
 
 void CStereoscopicsManager::OnStreamChange()
 {
+  auto& cache = CServiceBroker::GetDataCacheCore();
+  if (cache.IsBluray3DNav())
+  {
+    if (!cache.IsBluray3DReady())
+    {
+      RenderStereoMode preferred = GetPreferredPlaybackMode();
+      if (preferred == RenderStereoMode::AUTO)
+        preferred = GetStereoModeOfPlayingVideo();
+      auto* windowSystem =
+          static_cast<CWinSystemAmlogic*>(CServiceBroker::GetWinSystem());
+      if (!windowSystem->GetAmlDisplay()->aml_display_support_3d() ||
+          !CServiceBroker::GetRenderSystem()->SupportsStereo(preferred))
+        preferred = RenderStereoMode::OFF;
+      SetStereoMode(preferred);
+      cache.SetBluray3DReady();
+      Notify();
+    }
+    return;
+  }
+
   STEREOSCOPIC_PLAYBACK_MODE playbackMode = static_cast<STEREOSCOPIC_PLAYBACK_MODE>(m_settings->GetInt(CSettings::SETTING_VIDEOPLAYER_STEREOSCOPICPLAYBACKMODE));
   RenderStereoMode mode = GetStereoMode();
 

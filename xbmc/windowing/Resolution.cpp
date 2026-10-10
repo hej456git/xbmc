@@ -126,7 +126,8 @@ void CResolutionUtils::FindResolutionFromWhitelist(float fps, int width, int hei
     for (const auto& c : candidates)
     {
       info = CServiceBroker::GetWinSystem()->GetGfxContext().GetResInfo(c);
-      if (((info.iScreenWidth >= desktop_info.iScreenWidth) ||
+      if (((is3D && (dwFlags & STEREO_FLAGS) != 0) ||
+           (info.iScreenWidth >= desktop_info.iScreenWidth) ||
            (info.iScreenHeight >= curr.iScreenHeight && info.iScreenWidth >= curr.iScreenWidth)) &&
           ModeFlagsMatch(info.dwFlags, dwFlags))
       {
