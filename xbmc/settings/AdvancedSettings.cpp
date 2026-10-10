@@ -530,9 +530,9 @@ void CAdvancedSettings::Initialize()
   // internal video extensions
   m_videoExtensions += "|.pvr";
 
-  m_stereoscopicregex_3d = "[-. _]3d[-. _]";
-  m_stereoscopicregex_sbs = "[-. _]h?sbs[-. _]";
-  m_stereoscopicregex_tab = "[-. _]h?tab[-. _]";
+  m_stereoscopicregex_3d = "[-. _](3d|[fh]?sbs|[fh]?tab|ou|[fh][-. _]?ou)[-. _]";
+  m_stereoscopicregex_sbs = "[-. _][fh]?sbs[-. _]";
+  m_stereoscopicregex_tab = "[-. _]([fh]?tab|ou|[fh][-. _]?ou)[-. _]";
   m_stereoscopicregex_mvc = "[-. _]h?mvc[-. _]";
 
   m_logLevelHint = m_logLevel = LOG_LEVEL_NORMAL;
