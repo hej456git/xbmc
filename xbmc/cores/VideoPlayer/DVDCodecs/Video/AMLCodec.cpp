@@ -3546,7 +3546,11 @@ void CAMLCodec::SetVideoRect(const CRect &SrcRect, const CRect &DestRect)
   }
   else if (m_guiStereoMode == RenderStereoMode::SPLIT_HORIZONTAL)
   {
+    // Convert both Y coordinates from the half-height top/bottom render space.
+    // Scaling only y2 changes the rectangle height when vertical shift is used.
+    dst_rect.y1 *= 2.0f;
     dst_rect.y2 *= 2.0f;
+    CLog::Log(LOGDEBUG, "MVC-VSHIFT-PATCH-V4: SPLIT_HORIZONTAL active");
   }
   else if (m_guiStereoMode == RenderStereoMode::HARDWAREBASED)
   {
@@ -3557,15 +3561,15 @@ void CAMLCodec::SetVideoRect(const CRect &SrcRect, const CRect &DestRect)
     if (full3d)
     {
       // A packed Full-SBS/TAB frame describes two complete 1920x1080 eyes,
-      // not a 32:9 or 8:9 display picture.  Use the complete HDMI
-      // frame-packed destination: 1080 + 45 blanking + 1080 = 2205.
+      // not a 32:9 or 8:9 display picture. Keep the Y offset calculated by
+      // BaseRenderer and preserve the complete 2205-line packed frame height.
       dst_rect.x1 = 0;
-      dst_rect.y1 = 0;
       dst_rect.x2 = info.iWidth;
-      dst_rect.y2 = info.iHeight * 2 + info.iBlanking;
+      dst_rect.y2 = dst_rect.y1 + info.iHeight * 2 + info.iBlanking;
+      CLog::Log(LOGDEBUG, "MVC-VSHIFT-PATCH-V4: HARDWAREBASED full3d active");
     }
     else
-      dst_rect.y2 = info.iHeight * 2 + info.iBlanking;
+      dst_rect.y2 = dst_rect.y1 + info.iHeight * 2 + info.iBlanking;
   }
 
   if (static_cast<CWinSystemAmlogic*>(CServiceBroker::GetWinSystem())->GetAmlDisplay()->aml_display_support_3d())

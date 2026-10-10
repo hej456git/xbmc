@@ -182,19 +182,31 @@ void CBaseRenderer::CalcDestRect(float offsetX,
   float posY = (height - newHeight) / 2;
   float posX = (width - newWidth) / 2;
 
-  // vertical shift range -1 to 1 shifts within the top and bottom black bars
-  // if there are no top and bottom black bars, this range does nothing
+  // vertical shift range -1 to 1 normally shifts within the top and bottom
+  // black bars. Full-height stereoscopic material has no such black bars, so
+  // use a small linear shift instead. In split-horizontal output the renderer
+  // later doubles the Y coordinates, making height / 8 here approximately
+  // 135 output pixels per 1.0 shift on a 1080p display.
   float blackBarSize = std::max((height - newHeight) / 2.0f, 0.0f);
-  posY += blackBarSize * std::max(std::min(verticalShift, 1.0f), -1.0f);
+  const bool stereoContent = CONF_FLAGS_STEREO_MODE_MASK(m_iFlags) != 0;
 
-  // vertical shift ranges -2 to -1 and 1 to 2 will shift the image out of the screen
-  // if vertical shift is -2 it will be completely shifted out the top,
-  // if it's 2 it will be completely shifted out the bottom
-  float shiftRange = std::min(newHeight, newHeight - (newHeight - height) / 2.0f);
-  if (verticalShift > 1.0f)
-    posY += shiftRange * (verticalShift - 1.0f);
-  else if (verticalShift < -1.0f)
-    posY += shiftRange * (verticalShift + 1.0f);
+  if (stereoContent && blackBarSize < 0.5f)
+  {
+    posY += verticalShift * height / 8.0f;
+  }
+  else
+  {
+    posY += blackBarSize * std::max(std::min(verticalShift, 1.0f), -1.0f);
+
+    // vertical shift ranges -2 to -1 and 1 to 2 will shift the image out of the screen
+    // if vertical shift is -2 it will be completely shifted out the top,
+    // if it's 2 it will be completely shifted out the bottom
+    float shiftRange = std::min(newHeight, newHeight - (newHeight - height) / 2.0f);
+    if (verticalShift > 1.0f)
+      posY += shiftRange * (verticalShift - 1.0f);
+    else if (verticalShift < -1.0f)
+      posY += shiftRange * (verticalShift + 1.0f);
+  }
 
   destRect.x1 = static_cast<float>(MathUtils::round_int(static_cast<double>(posX + offsetX)));
   destRect.x2 = destRect.x1 + MathUtils::round_int(static_cast<double>(newWidth));
