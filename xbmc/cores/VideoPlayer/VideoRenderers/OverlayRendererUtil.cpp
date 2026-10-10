@@ -22,6 +22,9 @@
 #include <cmath>
 #include <cstring>
 
+#include <cmath>
+
+
 namespace OVERLAY
 {
 
@@ -439,7 +442,7 @@ void ConvertPQPaletteToSRGB(std::vector<uint32_t>& palette)
   }
 }
 
-int GetStereoscopicDepth(bool isPgs, int subtitleDepth)
+int GetStereoscopicDepth(bool isPgs, int subtitleDepth, bool authoredDepth)
 {
   auto stereo_mode = CServiceBroker::GetWinSystem()->GetGfxContext().GetStereoMode();
 
@@ -450,13 +453,21 @@ int GetStereoscopicDepth(bool isPgs, int subtitleDepth)
     return 0;
   }
 
-  // get configured depth
-  int depth = CServiceBroker::GetSettingsComponent()->GetSettings()->GetInt(CSettings::SETTING_SUBTITLES_STEREOSCOPICDEPTH);
+  const auto settings = CServiceBroker::GetSettingsComponent()->GetSettings();
 
-  // in case of MVC playback and PGS subtitles, use the subtitle depth info additionally to the configured one
-  if(stereo_mode == RenderStereoMode::HARDWAREBASED && isPgs)
+  int depth;
+  if (stereo_mode == RenderStereoMode::HARDWAREBASED && isPgs && authoredDepth)
   {
-    depth += subtitleDepth;
+    // The fixed setting is deliberately not added as well: it is the fallback
+    // for discs that author nothing, and both together would double-count.
+    // Authored offsets are relative to a 1920 wide plane.
+    const float scale = CServiceBroker::GetWinSystem()->GetGfxContext().GetWidth() / 1920.0f;
+    depth = static_cast<int>(std::lround(subtitleDepth * scale)) +
+            settings->GetInt(CSettings::SETTING_SUBTITLES_STEREOSCOPICDEPTHADJUST);
+  }
+  else
+  {
+    depth = settings->GetInt(CSettings::SETTING_SUBTITLES_STEREOSCOPICDEPTH);
   }
 
   // correct depth according to the current left/right eye view

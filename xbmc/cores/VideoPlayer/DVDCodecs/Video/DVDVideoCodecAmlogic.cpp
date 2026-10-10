@@ -508,6 +508,9 @@ bool CDVDVideoCodecAmlogic::AddData(const DemuxPacket &packet)
 
   DrainMetadataToClock();
 
+  // Set by CVideoPlayer::Process() from the STN-SS ss_offset_sequence_id.
+  m_subtitlePlane = packet.subtitlePlane;
+
   uint8_t *pData(packet.pData);
   uint32_t iSize(packet.iSize);
   bool doviIsFEL = false;
@@ -546,6 +549,15 @@ bool CDVDVideoCodecAmlogic::AddData(const DemuxPacket &packet)
           break;
         default:
           break;
+      }
+    }
+
+    // MVC is SDR, so this sits outside the HDR gate above.
+    if (m_hints.codec == AV_CODEC_ID_H264 && m_subtitlePlane >= 0)
+    {
+      if (AMLParseMvcOfmd(pData, iSize, m_nalLengthSize, m_ofmdTable))
+      {
+        m_ofmdFrame = 0;
       }
     }
 
@@ -817,6 +829,18 @@ CDVDVideoCodec::VCReturn CDVDVideoCodecAmlogic::GetPicture(VideoPicture* pVideoP
     pVideoPicture->videoBuffer = m_videoBufferPool->Get();
     static_cast<CAMLVideoBuffer*>(pVideoPicture->videoBuffer)->Set(this, m_Codec,
      m_Codec->GetOMXPts(), m_Codec->GetAmlDuration(), m_Codec->GetBufferIndex());;
+
+    // The OFMD table is in display order, so it is indexed by output picture.
+    if (m_subtitlePlane >= 0 && static_cast<size_t>(m_subtitlePlane) < m_ofmdTable.size())
+    {
+      const std::vector<int8_t>& sequence = m_ofmdTable[m_subtitlePlane];
+      if (!sequence.empty())
+      {
+        pVideoPicture->m_3dSubtitleDepth = sequence[m_ofmdFrame % sequence.size()];
+        pVideoPicture->m_3dSubtitleDepthAuthored = true;
+      }
+      m_ofmdFrame++;
+    }
   }
 
   // check for mpeg2 aspect ratio changes

@@ -41,6 +41,20 @@ namespace OVERLAY {
   };
 
   /*!
+   * \brief The part of an overlay quad that carries visible pixels, as
+   *  fractions of the quad measured inward from each edge. All zero means the
+   *  bitmap fills its quad, which is what a tightly cropped PGS or VobSub
+   *  object does and therefore the overwhelmingly common case.
+   */
+  struct SContentInset
+  {
+    float left{0.0f};
+    float top{0.0f};
+    float right{0.0f};
+    float bottom{0.0f};
+  };
+
+  /*!
    * \brief Mark the entire GUI dirty so the next render pass runs
    *  (not skipped). Overlays (subtitles, debug OSD) are not CGUIControls
    *  and do not set m_controlDirtyState automatically; callers invoke
@@ -93,7 +107,15 @@ namespace OVERLAY {
     bool m_isHDROverlay{false};
 
     int m_3dSubtitleDepth{0};
+    bool m_3dSubtitleDepthAuthored{false};
     bool m_pgsSubtitle{false};
+
+    // True only for a picture of subtitle text (PGS, VobSub). Menu graphics
+    // reach the renderer through the same classes and must not be resized or
+    // moved by the subtitle settings.
+    bool m_isBitmapSubtitle{false};
+    // Where the visible pixels sit inside the quad above
+    SContentInset m_contentInset;
 
   protected:
     /*!
@@ -193,7 +215,47 @@ namespace OVERLAY {
       float renderedFrameHeight{0.0f};
     };
 
-    void Render(COverlay* o);
+    /*!
+     * \brief One overlay resolved to the screen geometry it will be drawn with.
+     *  Bitmap subtitle repositioning needs every overlay on screen this frame
+     *  before it can decide how far to move any of them, so the geometry is
+     *  computed for the whole frame first and drawn afterwards.
+     */
+    struct SRenderItem
+    {
+      std::shared_ptr<COverlay> overlay;
+      SRenderState state;
+    };
+
+    /*!
+     * \brief Resolve an overlay's placement into screen pixels
+     * \param o The overlay
+     * \param state Filled with the position and size to draw at
+     */
+    void GetRenderState(COverlay* o, SRenderState& state) const;
+
+    /*!
+     * \brief The rectangle covered by an overlay's visible pixels
+     * \param o The overlay
+     * \param state The placement returned by GetRenderState
+     * \return The content rectangle in screen pixels
+     */
+    static CRect GetContentRect(const COverlay& o, const SRenderState& state);
+
+    /*!
+     * \brief Move bitmap subtitles onto the line set by the subtitle position
+     *        and vertical margin settings
+     *
+     *  Subtitles whose content sits in the lower half of the frame are moved
+     *  up from the bottom edge, those in the upper half down from the top
+     *  edge. Overlays that are too tall to be a line of text, or that straddle
+     *  the middle of the frame, are left alone: they are graphics, not
+     *  dialogue. Does nothing unless the setting is enabled.
+     *
+     * \param items The overlays to be drawn this frame, adjusted in place
+     */
+    void RepositionBitmapSubtitles(std::vector<SRenderItem>& items) const;
+
     std::shared_ptr<COverlay> Convert(SElement& e);
     // Build a COverlay (cached or freshly created) from the libass output
     // already produced by PrepareOverlays. Does not call ass_render_frame.
@@ -247,6 +309,10 @@ namespace OVERLAY {
     KODI::SUBTITLES::HorizontalAlign m_subtitleHorizontalAlign{
         KODI::SUBTITLES::HorizontalAlign::CENTER};
     KODI::SUBTITLES::Align m_subtitleAlign{KODI::SUBTITLES::Align::BOTTOM_OUTSIDE};
+    // Zoom applied to bitmap subtitles, in %, 100 meaning the authored size
+    int m_bitmapZoomPerc{100};
+    // Whether the subtitle position and margin also apply to bitmap subtitles
+    bool m_bitmapPosition{false};
 
     std::shared_ptr<struct KODI::SUBTITLES::STYLE::style> m_overlayStyle;
     std::atomic<bool> m_isSettingsChanged{false};

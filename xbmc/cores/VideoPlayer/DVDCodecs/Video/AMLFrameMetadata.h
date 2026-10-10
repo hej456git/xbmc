@@ -19,6 +19,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <cstring>
 
 extern "C"
 {
@@ -44,6 +45,9 @@ struct AMLFrameMetadata
   std::string hdrMdcv;
   std::string hdrCll;
 
+  // One signed pixel offset per subtitle plane; empty without OFMD.
+  std::vector<int8_t> mvcOffsets;
+
   bool operator==(const AMLFrameMetadata&) const = default;
 
   // a frame without a payload holds the last carried one instead of
@@ -58,6 +62,8 @@ struct AMLFrameMetadata
       hdrMdcv = prev.hdrMdcv;
     if (hdrCll.empty())
       hdrCll = prev.hdrCll;
+    if (mvcOffsets.empty())
+      mvcOffsets = prev.mvcOffsets;
   }
 
   // values are base64 or plain flag tokens, so no JSON escaping is needed
@@ -330,6 +336,117 @@ inline void AMLLatchHevcDoviRpu(const uint8_t* data,
     meta.doviRpu = Base64::Encode(reinterpret_cast<const char*>(data + nal),
                                   static_cast<unsigned int>(end - nal));
   }
+}
+
+// Reads the Blu-ray 3D "1 plane + offset" table into table[sequence][frame].
+// Carried once per GOP in an SEI user_data_unregistered payload:
+//
+//   byte  0..3   'OFMD'
+//   byte 10      number of offset sequences (low 6 bits)
+//   byte 11      displayed frames in this GOP (low 7 bits)
+//   byte 14..    nseq * frames values, sequence-major; bit 7 is the sign and
+//                bits 0..6 the offset in pixels of a 1920 wide plane
+inline bool AMLParseMvcOfmd(const uint8_t* data,
+                            size_t size,
+                            int nalLengthSize,
+                            std::vector<std::vector<int8_t>>& table)
+{
+  static const uint8_t kOfmdUuid[16] = {0x17, 0xee, 0x8c, 0x60, 0xf8, 0x4d, 0x11, 0xd9,
+                                        0x8c, 0xd6, 0x08, 0x00, 0x20, 0x0c, 0x9a, 0x66};
+  if (!data || size < 4)
+    return false;
+
+  bool found = false;
+
+  const auto parseNal = [&](const uint8_t* nal, size_t len)
+  {
+    if (found || len < 2 || (nal[0] & 0x1f) != 6) // H.264 SEI
+      return;
+
+    // Unescape first: an emulation-prevention byte inside the payload would
+    // shift the value table silently rather than fail to parse.
+    std::vector<uint8_t> rbsp;
+    rbsp.reserve(len);
+    for (size_t i = 1; i < len; ++i)
+    {
+      if (i + 2 < len && nal[i] == 0 && nal[i + 1] == 0 && nal[i + 2] == 3)
+      {
+        rbsp.push_back(0);
+        rbsp.push_back(0);
+        i += 2;
+      }
+      else
+        rbsp.push_back(nal[i]);
+    }
+
+    if (rbsp.size() < sizeof(kOfmdUuid) + 20)
+      return;
+
+    for (size_t i = 0; i + sizeof(kOfmdUuid) + 14 <= rbsp.size(); ++i)
+    {
+      if (memcmp(rbsp.data() + i, kOfmdUuid, sizeof(kOfmdUuid)) != 0)
+        continue;
+
+      const uint8_t* o = rbsp.data() + i + sizeof(kOfmdUuid);
+      const size_t avail = rbsp.size() - (i + sizeof(kOfmdUuid));
+      if (avail < 14 || memcmp(o, "OFMD", 4) != 0)
+        continue;
+
+      const size_t sequences = o[10] & 0x3f;
+      const size_t frames = o[11] & 0x7f;
+      if (!sequences || !frames || 14 + sequences * frames > avail)
+        continue;
+
+      table.assign(sequences, std::vector<int8_t>(frames, 0));
+      for (size_t seq = 0; seq < sequences; ++seq)
+      {
+        for (size_t f = 0; f < frames; ++f)
+        {
+          const uint8_t v = o[14 + seq * frames + f];
+          table[seq][f] = static_cast<int8_t>((v & 0x80) ? -(v & 0x7f) : (v & 0x7f));
+        }
+      }
+      found = true;
+      return;
+    }
+  };
+
+  if (nalLengthSize >= 1 && nalLengthSize <= 4)
+  {
+    size_t pos = 0;
+    while (pos + nalLengthSize <= size)
+    {
+      uint32_t len = 0;
+      for (int i = 0; i < nalLengthSize; ++i)
+        len = (len << 8) | data[pos + i];
+      pos += nalLengthSize;
+      if (len == 0 || len > size - pos)
+        break;
+      parseNal(data + pos, len);
+      pos += len;
+    }
+  }
+  else
+  {
+    size_t nal = SIZE_MAX;
+    for (size_t i = 0; i + 2 < size; ++i)
+    {
+      if (data[i] != 0 || data[i + 1] != 0 || data[i + 2] != 1)
+        continue;
+      if (nal != SIZE_MAX)
+      {
+        size_t end = i;
+        while (end > nal && data[end - 1] == 0)
+          end--;
+        parseNal(data + nal, end - nal);
+      }
+      nal = i + 3;
+    }
+    if (nal != SIZE_MAX && nal < size)
+      parseNal(data + nal, size - nal);
+  }
+
+  return found;
 }
 
 // Walks one demux packet for the prefix SEI payloads worth publishing: the

@@ -115,6 +115,9 @@ private:
 
   uint32_t m_metadataToken{0};
   bool m_metaLeadLogged{false};
+  int m_subtitlePlane{-1};
+  std::vector<std::vector<int8_t>> m_ofmdTable;
+  size_t m_ofmdFrame{0};
   bool m_stripHdr10Plus{false};
   bool m_dualLayer{false};
   int m_nalLengthSize{0};

@@ -61,6 +61,7 @@ public:
   std::string stereoMode;
 
   int m_3dSubtitleDepth;
+  bool m_3dSubtitleDepthAuthored;
 
   int8_t* qp_table;                //< Quantization parameters, primarily used by filters
   int qstride;
