@@ -44,6 +44,7 @@ void VideoPicture::Reset()
   stereoMode.clear();
 
   m_3dSubtitleDepth = 0;
+  m_3dSubtitleDepthAuthored = false;
 
   qp_table = nullptr;
   qstride = 0;

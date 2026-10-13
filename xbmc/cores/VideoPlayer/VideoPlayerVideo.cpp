@@ -962,11 +962,20 @@ void CVideoPlayerVideo::ProcessOverlays(const VideoPicture* pSource, double pts)
       {
 
         pOverlay->m_3dSubtitleDepth = pSource->m_3dSubtitleDepth;
+        pOverlay->m_3dSubtitleDepthAuthored = pSource->m_3dSubtitleDepthAuthored;
 
         if(pOverlay->IsOverlayType(DVDOVERLAY_TYPE_GROUP))
-          overlays.insert(overlays.end(),
-                          static_cast<CDVDOverlayGroup&>(*pOverlay).m_overlays.begin(),
-                          static_cast<CDVDOverlayGroup&>(*pOverlay).m_overlays.end());
+        {
+          // The children are what reach the renderer, so they need it too.
+          CDVDOverlayGroup& group = static_cast<CDVDOverlayGroup&>(*pOverlay);
+          for (auto& child : group.m_overlays)
+          {
+            child->m_3dSubtitleDepth = pSource->m_3dSubtitleDepth;
+            child->m_3dSubtitleDepthAuthored = pSource->m_3dSubtitleDepthAuthored;
+          }
+
+          overlays.insert(overlays.end(), group.m_overlays.begin(), group.m_overlays.end());
+        }
         else
           overlays.push_back(pOverlay);
       }

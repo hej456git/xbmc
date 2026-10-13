@@ -315,6 +315,16 @@ std::shared_ptr<CDVDOverlay> CDVDOverlayCodecFFmpeg::GetOverlay()
     overlay->source_width = m_width;
     overlay->source_height = m_height;
 
+    // PGS and VobSub carry nothing but pictures of subtitle text, so the user
+    // may reposition and resize them. DVB subtitles are deliberately left out:
+    // the same codec path also delivers broadcast logos and graphics, which
+    // are placed where the broadcaster meant them to be.
+    const AVCodecID codecId = m_pCodecContext->codec_id;
+    overlay->SetBitmapSubtitle(codecId == AV_CODEC_ID_HDMV_PGS_SUBTITLE ||
+                               codecId == AV_CODEC_ID_DVD_SUBTITLE);
+
+    overlay->SetPgsSubtitle(codecId == AV_CODEC_ID_HDMV_PGS_SUBTITLE);
+
     uint8_t* s = rect.data[0];
     uint8_t* t = overlay->pixels.data();
 

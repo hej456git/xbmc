@@ -29,6 +29,7 @@
 #include "settings/Settings.h"
 #include "settings/SettingsComponent.h"
 #include "settings/SubtitlesSettings.h"
+#include "settings/lib/Setting.h"
 #include "utils/StringUtils.h"
 #include "utils/Variant.h"
 #include "video/PlayerControllerActions.h"
@@ -36,6 +37,8 @@
 #include "video/dialogs/GUIDialogAudioSettings.h"
 #include "video/guilib/VideoStreamSelectHelper.h"
 #include "windowing/WinSystem.h"
+
+#include <algorithm>
 
 #include <algorithm>
 
@@ -453,6 +456,46 @@ bool CPlayerController::OnAction(const CAction &action)
 
         ShowSlider(action.GetID(), 277, static_cast<float>(vs.m_subtitleVerticalPosition),
                    static_cast<float>(resInfo.Overscan.top), 1.0f, static_cast<float>(maxPos));
+        return true;
+      }
+
+      case ACTION_SUBTITLE_BITMAP_ZOOM_IN:
+      case ACTION_SUBTITLE_BITMAP_ZOOM_OUT:
+      {
+        // Take the bounds from the setting rather than repeating them here, and
+        // set it through the settings manager so the renderer is notified
+        // exactly as it is for a change made in the GUI or over JSON-RPC.
+        const auto setting{std::static_pointer_cast<CSettingInt>(
+            CServiceBroker::GetSettingsComponent()->GetSettings()->GetSetting(
+                CSettings::SETTING_SUBTITLES_BITMAPZOOM))};
+        if (!setting)
+          return true;
+
+        // Deliberately not the setting's own step: that is 1% so the slider can
+        // be adjusted finely, and a button that moves the size by 1% a press
+        // reads as doing nothing at all.
+        constexpr int zoomStep{5};
+        const int step{action.GetID() == ACTION_SUBTITLE_BITMAP_ZOOM_IN ? zoomStep : -zoomStep};
+        const int zoom{
+            std::clamp(setting->GetValue() + step, setting->GetMinimum(), setting->GetMaximum())};
+        setting->SetValue(zoom);
+
+        ShowSlider(action.GetID(), 39213, static_cast<float>(zoom),
+                   static_cast<float>(setting->GetMinimum()), static_cast<float>(zoomStep),
+                   static_cast<float>(setting->GetMaximum()));
+        return true;
+      }
+
+      case ACTION_SUBTITLE_BITMAP_POSITION:
+      {
+        const auto settings{CServiceBroker::GetSettingsComponent()->GetSettings()};
+        const bool enabled{!settings->GetBool(CSettings::SETTING_SUBTITLES_BITMAPPOSITION)};
+        settings->SetBool(CSettings::SETTING_SUBTITLES_BITMAPPOSITION, enabled);
+
+        const auto& strings{CServiceBroker::GetResourcesComponent().GetLocalizeStrings()};
+        CGUIDialogKaiToast::QueueNotification(CGUIDialogKaiToast::Info, strings.Get(39215),
+                                              strings.Get(enabled ? 305 : 13106),
+                                              TOAST_DISPLAY_TIME, false);
         return true;
       }
 
