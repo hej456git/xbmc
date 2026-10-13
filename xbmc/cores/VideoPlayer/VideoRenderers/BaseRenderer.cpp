@@ -334,6 +334,15 @@ void CBaseRenderer::ManageRenderArea()
   float inputFrameRatio  = GetAspectRatio();
   float ratio  = m_sourceRect.x2 / m_sourceRect.y2;
 
+  // A canonical Full-SBS frame contains two full 1920x1080 eyes side by side.
+  // Calculate its destination rectangle from the per-eye aspect ratio rather
+  // than treating the packed 3840x1080 frame as a 32:9 image.
+  if (stereo_mode == CONF_FLAGS_STEREO_MODE_SBS &&
+      m_sourceWidth == 3840 && m_sourceHeight == 1080)
+  {
+    inputFrameRatio = ratio * 0.5f;
+  }
+
   if(CONF_FLAGS_STEREO_CADENCE(m_iFlags) == CONF_FLAGS_STEREO_CADANCE_RIGHT_LEFT)
   {
     if (stereo_view == RenderStereoView::LEFT)
