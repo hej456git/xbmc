@@ -337,7 +337,8 @@ void CBaseRenderer::ManageRenderArea()
   // A canonical Full-SBS frame contains two full 1920x1080 eyes side by side.
   // Calculate its destination rectangle from the per-eye aspect ratio rather
   // than treating the packed 3840x1080 frame as a 32:9 image.
-  if (stereo_mode == CONF_FLAGS_STEREO_MODE_SBS &&
+  if (CServiceBroker::GetWinSystem()->GetGfxContext().GetStereoMode() ==
+          RenderStereoMode::HARDWAREBASED &&
       m_sourceWidth == 3840 && m_sourceHeight == 1080)
   {
     inputFrameRatio = ratio * 0.5f;
