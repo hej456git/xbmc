@@ -505,7 +505,6 @@ bool CDVDVideoCodecAmlogic::AddData(const DemuxPacket &packet)
   // Handle Input, add demuxer packet to input queue, we must accept it or
   // it will be discarded as VideoPlayerVideo has no concept of "try again".
 
-  DrainMetadataToClock();
 
   // Set by CVideoPlayer::Process() from the STN-SS ss_offset_sequence_id.
   m_subtitlePlane = packet.subtitlePlane;
