@@ -10,6 +10,7 @@
 
 #include "EdlEdit.h"
 #include "threads/CriticalSection.h"
+#include "windowing/Resolution.h"
 
 #include <atomic>
 #include <chrono>
@@ -24,6 +25,13 @@ public:
   static CDataCacheCore& GetInstance();
   void Reset();
   void ResetAudioCache();
+  void SetBluray3DNav(bool active);
+  bool IsBluray3DNav() const { return m_bluray3DNav.load(); }
+  bool IsBluray3DReady() const { return m_bluray3DReady.load(); }
+  void SetBluray3DReady() { m_bluray3DReady = true; }
+  RESOLUTION GetBluray3DResolution() const { return m_bluray3DResolution.load(); }
+  void SetBluray3DResolution(RESOLUTION resolution) { m_bluray3DResolution = resolution; }
+
   bool HasAVInfoChanges();
   void SignalVideoInfoChange();
   void SignalAudioInfoChange();
@@ -227,6 +235,9 @@ public:
   int64_t GetMaxTime();
 
 protected:
+  std::atomic_bool m_bluray3DNav{false};
+  std::atomic_bool m_bluray3DReady{false};
+  std::atomic<RESOLUTION> m_bluray3DResolution{RES_INVALID};
   std::atomic_bool m_hasAVInfoChanges = false;
 
   CCriticalSection m_videoPlayerSection;

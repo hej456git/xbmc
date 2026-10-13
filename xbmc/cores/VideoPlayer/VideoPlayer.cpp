@@ -4615,6 +4615,14 @@ bool CVideoPlayer::OpenVideoStream(CDVDStreamInfo& hint, bool reset)
   if(pMenus && pMenus->IsInMenu())
     hint.stills = true;
 
+  const bool isMvc = hint.codec_tag == MKTAG('A', 'M', 'V', 'C') ||
+                     hint.codec_tag == MKTAG('M', 'V', 'C', '1');
+  if (CServiceBroker::GetDataCacheCore().IsBluray3DNav() && !isMvc)
+  {
+    hint.codecOptions |= CODEC_FORCE_SOFTWARE | CODEC_ALLOW_FALLBACK;
+    hint.stereo_mode = "mono";
+  }
+
   if (hint.stereo_mode.empty())
   {
     CGUIComponent *gui = CServiceBroker::GetGUI();
@@ -4659,7 +4667,8 @@ bool CVideoPlayer::OpenVideoStream(CDVDStreamInfo& hint, bool reset)
     player->SendMessage(std::make_shared<CDVDMsgBool>(CDVDMsg::GENERAL_PAUSE, m_displayLost), 1);
 
     const std::shared_ptr<CDVDInputStream::IExtentionStream>  pExt = std::dynamic_pointer_cast<CDVDInputStream::IExtentionStream>(m_pInputStream);
-    if (pExt && !static_cast<IDVDStreamPlayerVideo*>(player)->SupportsExtention())
+    if (pExt && pExt->HasExtention() && isMvc &&
+        !static_cast<IDVDStreamPlayerVideo*>(player)->SupportsExtention())
       pExt->DisableExtention();
 
     // look for any EDL files

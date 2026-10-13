@@ -15,6 +15,7 @@
 #include "utils/EGLUtils.h"
 #include "utils/GlobalsHandling.h"
 #include "utils/StreamDetails.h"
+#include "windowing/Resolution.h"
 
 #include <mutex>
 
@@ -73,6 +74,7 @@ protected:
 private:
   std::unique_ptr<CEGLContextUtils> m_pGLContext;
   StreamHdrType m_hdrType = StreamHdrType::HDR_TYPE_NONE;
+  RESOLUTION_INFO m_lastAppliedResolution;
   uint64_t m_presentStepSeen{0};
 
   bool m_guiCompositing{false};

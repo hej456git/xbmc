@@ -14,6 +14,7 @@
 #include "RenderFlags.h"
 #include "ServiceBroker.h"
 #include "application/Application.h"
+#include "cores/DataCacheCore.h"
 #include "cores/VideoPlayer/Interface/TimingConstants.h"
 #include "guilib/GUIComponent.h"
 #include "guilib/StereoscopicsManager.h"
@@ -33,8 +34,10 @@
 #include "windowing/GraphicContext.h"
 #include "windowing/WinSystem.h"
 
+#include <cmath>
 #include <memory>
 #include <mutex>
+#include <vector>
 
 using namespace std::chrono_literals;
 
@@ -721,6 +724,87 @@ RESOLUTION CRenderManager::GetResolution()
 {
   RESOLUTION res = CServiceBroker::GetWinSystem()->GetGfxContext().GetVideoResolution();
 
+  auto& cache = CServiceBroker::GetDataCacheCore();
+  if (cache.IsBluray3DNav())
+  {
+    if (!cache.IsBluray3DReady())
+      return res;
+
+    const RESOLUTION locked = cache.GetBluray3DResolution();
+    if (locked != RES_INVALID)
+      return locked;
+
+    auto& graphics = CServiceBroker::GetWinSystem()->GetGfxContext();
+    uint32_t requiredFlags = 0;
+    switch (graphics.GetStereoMode())
+    {
+      case RenderStereoMode::HARDWAREBASED:
+        requiredFlags = D3DPRESENTFLAG_MODE3DFP;
+        break;
+      case RenderStereoMode::SPLIT_VERTICAL:
+        requiredFlags = D3DPRESENTFLAG_MODE3DSBS;
+        break;
+      case RenderStereoMode::SPLIT_HORIZONTAL:
+        requiredFlags = D3DPRESENTFLAG_MODE3DTB;
+        break;
+      default:
+        break;
+    }
+
+    constexpr uint32_t stereoFlags = D3DPRESENTFLAG_MODE3DFP |
+                                     D3DPRESENTFLAG_MODE3DSBS |
+                                     D3DPRESENTFLAG_MODE3DTB;
+    const auto supportsOutput = [requiredFlags, stereoFlags](uint32_t flags)
+    {
+      return requiredFlags != 0 ? (flags & requiredFlags) == requiredFlags
+                                : (flags & stereoFlags) == 0;
+    };
+    const float frameRates[] = {24000.0f / 1001.0f, 24.0f, 50.0f, 60.0f};
+    for (const float fps : frameRates)
+    {
+      const RESOLUTION candidate =
+          CResolutionUtils::ChooseBestResolution(fps, 1920, 1080, requiredFlags != 0);
+      if (supportsOutput(graphics.GetResInfo(candidate).dwFlags))
+      {
+        cache.SetBluray3DResolution(candidate);
+        CLog::Log(LOGINFO, "Blu-ray 3D navigation: holding output {}",
+                  graphics.GetResInfo(candidate).strMode);
+        return candidate;
+      }
+    }
+
+    std::vector<RESOLUTION> candidates;
+    graphics.GetAllowedResolutions(candidates);
+    for (const int height : {1080, 720})
+    {
+      for (const float fps : frameRates)
+      {
+        for (const RESOLUTION candidate : candidates)
+        {
+          if (candidate < RES_DESKTOP)
+            continue;
+          const RESOLUTION_INFO info = graphics.GetResInfo(candidate);
+          if (!supportsOutput(info.dwFlags) ||
+              (info.dwFlags & D3DPRESENTFLAG_INTERLACED) != 0 ||
+              info.iScreenHeight != height || info.iScreenWidth != height * 16 / 9 ||
+              std::abs(info.fRefreshRate - fps) > 0.01f)
+            continue;
+
+          cache.SetBluray3DResolution(candidate);
+          CLog::Log(LOGINFO,
+                    "Blu-ray 3D navigation: direct output {}, id={}, flags=0x{:x}",
+                    info.strMode, info.strId, info.dwFlags);
+          return candidate;
+        }
+      }
+    }
+
+    CLog::Log(LOGWARNING, "Blu-ray 3D navigation: no compatible output mode; using 2D");
+    CServiceBroker::GetGUI()->GetStereoscopicsManager().SetStereoMode(RenderStereoMode::OFF);
+    cache.SetBluray3DResolution(RES_DESKTOP);
+    return RES_DESKTOP;
+  }
+
   std::unique_lock lock(m_statelock);
   if (m_renderState == STATE_UNCONFIGURED)
     return res;
@@ -943,6 +1027,24 @@ void CRenderManager::UpdateResolution()
 {
   if (m_bTriggerUpdateResolution)
   {
+    auto& cache = CServiceBroker::GetDataCacheCore();
+    if (cache.IsBluray3DNav())
+    {
+      auto& graphics = CServiceBroker::GetWinSystem()->GetGfxContext();
+      if (!cache.IsBluray3DReady() || !graphics.IsFullScreenVideo() ||
+          !graphics.IsFullScreenRoot())
+        return;
+
+      graphics.SetHDRType(m_picture.hdrType);
+      graphics.SetVideoResolution(GetResolution(), false);
+      UpdateLatencyTweak();
+      if (m_pRenderer)
+        m_pRenderer->Update();
+      m_bTriggerUpdateResolution = false;
+      m_playerPort->VideoParamsChange();
+      return;
+    }
+
     if (CServiceBroker::GetWinSystem()->GetGfxContext().IsFullScreenVideo() && CServiceBroker::GetWinSystem()->GetGfxContext().IsFullScreenRoot())
     {
       auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - m_videostarted);

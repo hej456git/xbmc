@@ -145,6 +145,9 @@ bool CVideoPlayerVideo::OpenStream(CDVDStreamInfo hint)
       CLog::Log(LOGINFO, "CVideoPlayerVideo::OpenStream - could not open video codec");
     }
 
+    if (codec)
+      m_supportsExtention = codec->SupportsExtention();
+
     SendMessage(std::make_shared<CDVDMsgVideoCodecChange>(hint, std::move(codec)), 0);
   }
   else
@@ -159,6 +162,7 @@ bool CVideoPlayerVideo::OpenStream(CDVDStreamInfo hint)
       return false;
     }
 
+    m_supportsExtention = codec->SupportsExtention();
     OpenStream(hint, std::move(codec));
     CLog::Log(LOGINFO, "Creating video thread");
     m_messageQueue.Init();
@@ -264,6 +268,7 @@ void CVideoPlayerVideo::CloseStream(bool bWaitForBuffers)
 
   CLog::Log(LOGINFO, "deleting video codec");
   m_pVideoCodec.reset();
+  m_supportsExtention = false;
 
   if (m_picture.videoBuffer)
   {

@@ -157,6 +157,22 @@ bool CWinSystemAmlogicGLESContext::CreateNewWindow(const std::string& name,
     __FUNCTION__,
     res.iWidth, res.iHeight, res.iScreenWidth, res.iScreenHeight, res.fRefreshRate, res.dwFlags, nativeGUI);
 
+  if (m_bWindowCreated && IsPresentationReady() &&
+      !force_mode_switch_by_hotplug && !IsHotplugPending() &&
+      m_stereo_mode == RenderStereoMode::HARDWAREBASED &&
+      (m_lastAppliedResolution.dwFlags & D3DPRESENTFLAG_MODE3DFP) != 0 &&
+      current_resolution.iScreenWidth == m_lastAppliedResolution.iScreenWidth &&
+      current_resolution.iScreenHeight == m_lastAppliedResolution.iScreenHeight &&
+      (current_resolution.dwFlags & D3DPRESENTFLAG_INTERLACED) ==
+          (m_lastAppliedResolution.dwFlags & D3DPRESENTFLAG_INTERLACED) &&
+      MathUtils::FloatEquals(current_resolution.fRefreshRate,
+                            m_lastAppliedResolution.fRefreshRate, 0.001f))
+  {
+    current_resolution.iWidth = m_lastAppliedResolution.iWidth;
+    current_resolution.iHeight = m_lastAppliedResolution.iHeight;
+    current_resolution.dwFlags = m_lastAppliedResolution.dwFlags;
+  }
+
   // check if mode switch is needed
   if (current_resolution.iWidth == res.iWidth && current_resolution.iHeight == res.iHeight &&
       current_resolution.iScreenWidth == res.iScreenWidth &&
@@ -240,6 +256,7 @@ bool CWinSystemAmlogicGLESContext::CreateNewWindow(const std::string& name,
       (*i)->OnResetDisplay();
   }
 
+  m_lastAppliedResolution = res;
   if (m_amlDisplay->aml_get_display_connected())
     SetPresentationReady(true);
 
