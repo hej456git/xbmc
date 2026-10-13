@@ -414,6 +414,9 @@ void CStreamParser::ConvertBlurayPlaylistInformation(const BlurayPlaylistInforma
     p.clipDuration[clip.clip] = clip.duration;
   }
 
+  // Extension sub-paths hold the MVC dependent view, telling a 3D playlist from its 2D twin.
+  p.hasStereoscopicVideo = !b.extensionSubPlayItems.empty();
+
   const DefaultStreams defaults{GetDefaultStreams(b)};
   const AspectRatioMap aspectRatios{GetClipAspectRatios(b)};
 

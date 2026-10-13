@@ -128,6 +128,9 @@ struct PlaylistInformation
   //! picture-in-picture (see IsPictureInPicturePresentation)
   bool hasSecondaryVideo{false};
 
+  //! Whether the playlist carries a stereoscopic (BD-3D MVC) dependent view in an extension sub-path
+  bool hasStereoscopicVideo{false};
+
   void clear()
   {
     playlist = 0;
@@ -140,6 +143,7 @@ struct PlaylistInformation
     pgStreams.clear();
     languages.clear();
     hasSecondaryVideo = false;
+    hasStereoscopicVideo = false;
   }
 };
 
