@@ -3562,14 +3562,14 @@ void CAMLCodec::SetVideoRect(const CRect &SrcRect, const CRect &DestRect)
     {
       // A packed Full-SBS/TAB frame describes two complete 1920x1080 eyes,
       // not a 32:9 or 8:9 display picture. Keep the Y offset calculated by
-      // BaseRenderer and preserve the complete 2205-line packed frame height.
+      // BaseRenderer while keeping the frame-packed output boundary fixed.
       dst_rect.x1 = 0;
       dst_rect.x2 = info.iWidth;
-      dst_rect.y2 = dst_rect.y1 + info.iHeight * 2 + info.iBlanking;
+      dst_rect.y2 = info.iHeight * 2 + info.iBlanking;
       CLog::Log(LOGDEBUG, "MVC-VSHIFT-PATCH-V4: HARDWAREBASED full3d active");
     }
     else
-      dst_rect.y2 = dst_rect.y1 + info.iHeight * 2 + info.iBlanking;
+      dst_rect.y2 = info.iHeight * 2 + info.iBlanking;
   }
 
   if (static_cast<CWinSystemAmlogic*>(CServiceBroker::GetWinSystem())->GetAmlDisplay()->aml_display_support_3d())
