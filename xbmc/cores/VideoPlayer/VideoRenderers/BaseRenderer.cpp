@@ -334,6 +334,14 @@ void CBaseRenderer::ManageRenderArea()
   float inputFrameRatio  = GetAspectRatio();
   float ratio  = m_sourceRect.x2 / m_sourceRect.y2;
 
+  // Full-SBS hardware stereo: use the per-eye aspect ratio.
+  if (CServiceBroker::GetWinSystem()->GetGfxContext().GetStereoMode() ==
+          RenderStereoMode::HARDWAREBASED &&
+      m_sourceWidth == 3840 && m_sourceHeight == 1080)
+  {
+    inputFrameRatio = ratio * 0.5f;
+  }
+
   if(CONF_FLAGS_STEREO_CADENCE(m_iFlags) == CONF_FLAGS_STEREO_CADANCE_RIGHT_LEFT)
   {
     if (stereo_view == RenderStereoView::LEFT)
