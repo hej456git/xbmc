@@ -25,11 +25,30 @@
 #include "settings/SettingsComponent.h"
 #include "settings/lib/Setting.h"
 #include "utils/log.h"
+#include "utils/AMLUtils.h"
 
 #include <cassert>
 #include <mutex>
 
 using KODI::UTILS::COLOR::Color;
+
+namespace
+{
+// Restore the 45-line frame-packing separator
+// when T7 reports zero blanking for 1080p hardware 3D.
+int T7FramePackingBlank(const RESOLUTION_INFO& info)
+{
+  if (aml_get_cpufamily_id() == AML_T7 &&
+      info.iScreenWidth == 1920 &&
+      info.iScreenHeight == 1080 &&
+      info.iBlanking == 0)
+  {
+    return 45;
+  }
+
+  return info.iBlanking;
+}
+} // namespace
 
 CGraphicContext::CGraphicContext() = default;
 CGraphicContext::~CGraphicContext() = default;
@@ -265,7 +284,7 @@ CPoint CGraphicContext::StereoCorrection(const CPoint &point) const
     const RESOLUTION_INFO info = GetResInfo();
 
     if(m_stereoView == RenderStereoView::RIGHT)
-      res.y += info.iHeight + info.iBlanking;
+      res.y += info.iHeight + T7FramePackingBlank(info);
   }
   if(m_stereoMode == RenderStereoMode::SPLIT_VERTICAL)
   {
@@ -451,7 +470,13 @@ void CGraphicContext::SetVideoResolutionInternal(RESOLUTION res, bool forceUpdat
   const RenderStereoMode stereo_mode = CServiceBroker::GetWinSystem()->GetGfxContext().GetStereoMode();
 
   if (stereo_mode == RenderStereoMode::HARDWAREBASED)
-    info_org.iHeight = info_org.iScreenHeight * 2 + info_org.iBlanking;
+  {
+    // Include the missing T7 frame-packing gap
+    // before allocating the graphics framebuffer.
+    info_org.iBlanking = T7FramePackingBlank(info_org);
+    info_org.iHeight =
+        info_org.iScreenHeight * 2 + info_org.iBlanking;
+  }
 
   bool switched = false;
   if (CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_fullScreen)
