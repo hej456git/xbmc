@@ -6,6 +6,7 @@
  *  See LICENSES/README.md for more information.
  */
 
+#include <cmath>
 #include "Resolution.h"
 
 #include "GraphicContext.h"
@@ -501,6 +502,89 @@ void CResolutionUtils::FindResolutionFromWhitelist(float fps, int width, int hei
 
   if (found)
     return;
+
+  // Universal hardware Full3D fallback.
+  // Only select HDMI modes explicitly advertised as frame packing.
+  // Preserve all successful matches from the normal selector above.
+  if (is3D && stereo_mode == RenderStereoMode::HARDWAREBASED)
+  {
+    bool haveFpMode = false;
+    float bestWeight = std::numeric_limits<float>::max();
+    int bestArea = -1;
+    RESOLUTION bestResolution = resolution;
+
+    // Full3D: Prefer whitelisted FP modes. If none exist,
+    // allow HDMI-advertised FP modes for hardware 3D only.
+    std::vector<RESOLUTION> fpCandidates;
+
+    for (const auto& mode : indexList)
+    {
+      const RESOLUTION candidate =
+          CDisplaySettings::GetInstance().GetResFromString(mode.asString());
+      const RESOLUTION_INFO info =
+          CServiceBroker::GetWinSystem()->GetGfxContext().GetResInfo(candidate);
+
+      if ((info.dwFlags & D3DPRESENTFLAG_MODE3DFP) != 0 &&
+          ModeFlagsMatch(info.dwFlags, dwFlags) &&
+          info.iScreenWidth > 0 && info.iScreenHeight > 0 &&
+          info.fRefreshRate > 0.0f)
+        fpCandidates.push_back(candidate);
+    }
+
+    if (fpCandidates.empty())
+    {
+      CServiceBroker::GetWinSystem()->GetGfxContext()
+          .GetAllowedResolutions(fpCandidates);
+
+      CLog::Log(LOGINFO,
+                "[WHITELIST] Full3D: No whitelisted FP mode; "
+                "checking HDMI-advertised FP modes");
+    }
+
+    for (const RESOLUTION candidate : fpCandidates)
+    {
+      const RESOLUTION_INFO info =
+          CServiceBroker::GetWinSystem()->GetGfxContext().GetResInfo(candidate);
+
+      if ((info.dwFlags & D3DPRESENTFLAG_MODE3DFP) == 0 ||
+          !ModeFlagsMatch(info.dwFlags, dwFlags))
+        continue;
+
+      if (info.iScreenWidth <= 0 || info.iScreenHeight <= 0 ||
+          info.fRefreshRate <= 0.0f)
+        continue;
+
+      const float weight = RefreshWeight(info.fRefreshRate, fps);
+      const int area = info.iScreenWidth * info.iScreenHeight;
+
+      if (!haveFpMode ||
+          weight < bestWeight - 0.0001f ||
+          (std::abs(weight - bestWeight) <= 0.0001f && area > bestArea))
+      {
+        haveFpMode = true;
+        bestWeight = weight;
+        bestArea = area;
+        bestResolution = candidate;
+      }
+    }
+
+    if (haveFpMode)
+    {
+      resolution = bestResolution;
+      const RESOLUTION_INFO selected =
+          CServiceBroker::GetWinSystem()->GetGfxContext().GetResInfo(resolution);
+
+      CLog::Log(LOGINFO,
+                "[WHITELIST] Universal Full3D fallback selected FP mode: {} ({}) "
+                "for source {:.3f} fps (weight {:.5f})",
+                selected.strMode, resolution, fps, bestWeight);
+      return;
+    }
+
+    CLog::Log(LOGWARNING,
+              "[WHITELIST] Hardware Full3D requested but no permitted "
+              "HDMI frame-packing mode was found");
+  }
 
   CLog::Log(LOGDEBUG, "[WHITELIST] No resolution matched");
 }

@@ -11,6 +11,7 @@
 #include "cores/VideoPlayer/DVDCodecs/Video/AMLCodec.h"
 #include "platform/linux/SysfsPath.h"
 #include "ServiceBroker.h"
+#include "settings/DisplaySettings.h"
 #include "settings/Settings.h"
 #include "settings/SettingsComponent.h"
 #include "utils/AMLUtils.h"
@@ -684,10 +685,31 @@ std::unique_ptr<CVideoSync> CWinSystemAmlogicGLESContext::GetVideoSync(CVideoRef
 
 bool CWinSystemAmlogicGLESContext::SupportsStereo(const RenderStereoMode mode) const
 {
-  if (m_amlDisplay->aml_display_support_3d() &&
-      mode == RenderStereoMode::HARDWAREBASED) {
-    // yes, we support hardware based MVC decoding
-    return true;
+  if (mode == RenderStereoMode::HARDWAREBASED)
+  {
+    if (!m_amlDisplay->aml_display_support_3d())
+      return false;
+
+    // Full3D: Detect HDMI frame-packing capability independently
+    // of the user's ordinary resolution whitelist.
+    std::vector<RESOLUTION> resolutions;
+    GetGfxContext().GetAllowedResolutions(resolutions);
+
+    for (const RESOLUTION resolution : resolutions)
+    {
+      const RESOLUTION_INFO info = GetGfxContext().GetResInfo(resolution);
+
+      if ((info.dwFlags & D3DPRESENTFLAG_MODE3DFP) != 0 &&
+          (info.dwFlags & D3DPRESENTFLAG_INTERLACED) == 0 &&
+          info.iScreenWidth > 0 &&
+          info.iScreenHeight > 0 &&
+          info.fRefreshRate > 0.0f)
+      {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   return CRenderSystemGLES::SupportsStereo(mode);
