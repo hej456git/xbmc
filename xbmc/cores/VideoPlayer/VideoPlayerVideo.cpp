@@ -812,16 +812,27 @@ bool CVideoPlayerVideo::ProcessDecoderOutput(double &frametime, double &pts)
       }
     }
 
-    // Full-resolution packed SBS/TAB: use Kodi's existing hardware 3D path.
-    //
-    // AMLCodec keeps the original source hint/dimensions, so it can still
-    // distinguish Full-SBS from Full-TAB when selecting the driver mode.
+    // Full3D: Range-based Full3D recognition using original stream dimensions.
+    // Do not rely on decoder output dimensions, which may be DW-reduced.
+    // Stereo metadata is required; resolution alone does not enable Full3D.
+    const int sourceWidth = m_hints.width;
+    const int sourceHeight = m_hints.height;
+
     const bool full3dSbs =
-        m_picture.iWidth == 3840 && m_picture.iHeight == 1080 &&
-        (m_picture.stereoMode == "left_right" || m_picture.stereoMode == "right_left");
+        (((sourceWidth >= 3600 && sourceWidth <= 4096 &&
+           sourceHeight >= 900 && sourceHeight <= 2160) ||
+          (sourceWidth >= 5000 && sourceWidth <= 8192 &&
+           sourceHeight >= 900 && sourceHeight <= 2500))) &&
+        (m_picture.stereoMode == "left_right" ||
+         m_picture.stereoMode == "right_left");
+
     const bool full3dTab =
-        m_picture.iWidth == 1920 && m_picture.iHeight == 2160 &&
-        (m_picture.stereoMode == "top_bottom" || m_picture.stereoMode == "bottom_top");
+        (((sourceWidth >= 1800 && sourceWidth <= 2048 &&
+           sourceHeight >= 1400 && sourceHeight <= 2400) ||
+          (sourceWidth >= 1800 && sourceWidth <= 4096 &&
+           sourceHeight >= 2500 && sourceHeight <= 4320))) &&
+        (m_picture.stereoMode == "top_bottom" ||
+         m_picture.stereoMode == "bottom_top");
 
     if ((full3dSbs || full3dTab) &&
         CServiceBroker::GetRenderSystem() &&

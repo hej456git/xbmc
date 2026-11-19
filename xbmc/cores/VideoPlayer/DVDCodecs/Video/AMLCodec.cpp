@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <queue>
 #include <vector>
+#include <string>
 #include <signal.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -2517,6 +2518,38 @@ bool CAMLCodec::OpenDecoder(CDVDStreamInfo &hints, bool doviIsFEL)
   m_dll->codec_init_para(&am_private->gcodec, &am_private->vcodec);
 
   std::string config_data = GetHDRStaticMetadata(dv_enable);
+
+  // Full3D: Request full-resolution uncompressed DW1 for this Full-SBS
+  // HEVC case. Do not alter the working high-resolution automatic DW4 path.
+  if (am_private->video_format == VFORMAT_HEVC &&
+      m_hints.width == 3840 && m_hints.height == 1920 &&
+      m_hints.stereo_mode == "left_right")
+  {
+    if (!config_data.empty() && config_data.back() != ';')
+      config_data += ';';
+
+    config_data += "hevc_double_write_mode:1;";
+
+    CLog::Log(LOGINFO,
+              "Full3D: requesting HEVC DW1 for Full-SBS {}x{}",
+              m_hints.width, m_hints.height);
+  }
+  // Mirror HEVC's explicit 3840x1920 DW1 exception.
+  // All other AV1 inputs use decoder-side automatic DW selection.
+  if (am_private->video_format == VFORMAT_AV1 &&
+      m_hints.width == 3840 && m_hints.height == 1920 &&
+      m_hints.stereo_mode == "left_right")
+  {
+    if (!config_data.empty() && config_data.back() != ';')
+      config_data += ';';
+
+    config_data += "av1_double_write_mode:1;";
+
+    CLog::Log(LOGINFO,
+              "Full3D AV1: requesting DW1 for Full-SBS {}x{}",
+              m_hints.width, m_hints.height);
+  }
+
   if (!config_data.empty())
   {
     am_private->vcodec.config_len = static_cast<int>(config_data.size());
@@ -3409,17 +3442,24 @@ void CAMLCodec::SetVideoRect(const CRect &SrcRect, const CRect &DestRect)
   // do not do anything stupid here.
   bool update = false;
 
-  // Full-resolution packed 3D.
-  //
-  // Reuse Kodi's existing stereoscopic detection.  Do not parse filenames
-  // here: Kodi has already normalised the source to left_right/top_bottom.
+  // Full3D: Match the range-based Full3D rules used by VideoPlayer.
+  // Only explicitly identified stereoscopic streams enter this path.
   const std::string full3dStereoMode = m_hints.stereo_mode;
+
   const bool full3dSbs =
-      full3dStereoMode == "left_right" &&
-      m_hints.width == 3840 && m_hints.height == 1080;
+      (full3dStereoMode == "left_right") &&
+      ((m_hints.width >= 3600 && m_hints.width <= 4096 &&
+        m_hints.height >= 900 && m_hints.height <= 2160) ||
+       (m_hints.width >= 5000 && m_hints.width <= 8192 &&
+        m_hints.height >= 900 && m_hints.height <= 2500));
+
   const bool full3dTab =
-      full3dStereoMode == "top_bottom" &&
-      m_hints.width == 1920 && m_hints.height == 2160;
+      (full3dStereoMode == "top_bottom") &&
+      ((m_hints.width >= 1800 && m_hints.width <= 2048 &&
+        m_hints.height >= 1400 && m_hints.height <= 2400) ||
+       (m_hints.width >= 1800 && m_hints.width <= 4096 &&
+        m_hints.height >= 2500 && m_hints.height <= 4320));
+
   const bool full3d = full3dSbs || full3dTab;
 
   // video zoom adjustment.
@@ -3550,7 +3590,7 @@ void CAMLCodec::SetVideoRect(const CRect &SrcRect, const CRect &DestRect)
     // Scaling only y2 changes the rectangle height when vertical shift is used.
     dst_rect.y1 *= 2.0f;
     dst_rect.y2 *= 2.0f;
-    CLog::Log(LOGDEBUG, "MVC-VSHIFT-PATCH-V4: SPLIT_HORIZONTAL active");
+    CLog::Log(LOGDEBUG, "Full3D: SPLIT_HORIZONTAL active");
   }
   else if (m_guiStereoMode == RenderStereoMode::HARDWAREBASED)
   {
@@ -3575,7 +3615,86 @@ void CAMLCodec::SetVideoRect(const CRect &SrcRect, const CRect &DestRect)
       }
 
       dst_rect.y2 = dst_rect.y1 + info.iHeight * 2 + info.iBlanking;
-      CLog::Log(LOGDEBUG, "MVC-VSHIFT-PATCH-V4: HARDWAREBASED full3d active");
+
+      // Full3D: Universal Full3D aspect-aware geometry.
+      // Applies to all recognised Full-SBS and Full-TAB streams.
+      // Uses original stream dimensions, not DW-reduced dimensions.
+      // Assumes square source pixels.
+      // The HDMI frame-packed container retains its full height.
+
+      const float eyeWidth = full3dSbs
+          ? m_hints.width * 0.5f
+          : static_cast<float>(m_hints.width);
+
+      const float eyeHeight = full3dTab
+          ? m_hints.height * 0.5f
+          : static_cast<float>(m_hints.height);
+
+      if (eyeWidth > 0.0f && eyeHeight > 0.0f &&
+          info.iWidth > 0 && info.iHeight > 0)
+      {
+        const float outputAspect =
+            static_cast<float>(info.iWidth) / info.iHeight;
+
+        // Full3D: 3840x2160 H-SBS/H-TAB stores anamorphic
+        // half-resolution eyes intended for 16:9 presentation.
+        // Keep the Full3D frame-packing pipeline, but bypass
+        // incorrect square-pixel eye-aspect adjustments.
+        const bool uhdHalfStereo =
+            m_hints.width == 3840 &&
+            m_hints.height == 2160 &&
+            (full3dSbs || full3dTab);
+
+        const float eyeAspect =
+            uhdHalfStereo ? outputAspect : eyeWidth / eyeHeight;
+
+        if (uhdHalfStereo)
+          CLog::Log(LOGINFO,
+                    "Full3D: UHD half-stereo {} 3840x2160: "
+                    "using output eye aspect {:.4f}",
+                    full3dSbs ? "SBS" : "TAB", eyeAspect);
+
+        // Ignore small deviations from 16:9.
+        // This preserves known-good near-16:9 geometry.
+        constexpr float aspectTolerance = 0.03f;
+
+        if (eyeAspect > outputAspect * (1.0f + aspectTolerance))
+        {
+          // Wider than the output eye region.
+          // Calculate the ideal vertical margin.
+          // Translate both eyes using the existing VPP shift path.
+          const float idealEyeHeight = info.iWidth / eyeAspect;
+          const float yInset =
+              (info.iHeight - idealEyeHeight) * 0.5f;
+
+          dst_rect.y1 += yInset;
+          dst_rect.y2 += yInset;
+
+          CLog::Log(LOGINFO,
+                    "Full3D: Wide Full3D: AR={:.4f}, "
+                    "idealHeight={:.1f}, yOffset={:.1f}",
+                    eyeAspect, idealEyeHeight, yInset);
+        }
+        else if (eyeAspect <
+                 outputAspect * (1.0f - aspectTolerance))
+        {
+          // Narrower than the output eye region.
+          // Center horizontally, preserving the full FP height.
+          const float idealEyeWidth = info.iHeight * eyeAspect;
+          const float xInset =
+              (info.iWidth - idealEyeWidth) * 0.5f;
+
+          dst_rect.x1 += xInset;
+          dst_rect.x2 -= xInset;
+
+          CLog::Log(LOGINFO,
+                    "Full3D: Narrow Full3D: AR={:.4f}, "
+                    "idealWidth={:.1f}, xInset={:.1f}",
+                    eyeAspect, idealEyeWidth, xInset);
+        }
+      }
+
+      CLog::Log(LOGDEBUG, "Full3D: HARDWAREBASED full3d active");
     }
     else
       dst_rect.y2 = dst_rect.y1 + info.iHeight * 2 + info.iBlanking;
