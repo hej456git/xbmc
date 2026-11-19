@@ -3565,6 +3565,15 @@ void CAMLCodec::SetVideoRect(const CRect &SrcRect, const CRect &DestRect)
       // BaseRenderer and preserve the complete 2205-line packed frame height.
       dst_rect.x1 = 0;
       dst_rect.x2 = info.iWidth;
+
+      // Full-SBS: remove packed-aspect letterboxing while preserving shift.
+      if (full3dSbs)
+      {
+        dst_rect.y1 =
+            CDisplaySettings::GetInstance().GetVerticalShift() *
+            info.iHeight / 8.0f;
+      }
+
       dst_rect.y2 = dst_rect.y1 + info.iHeight * 2 + info.iBlanking;
       CLog::Log(LOGDEBUG, "MVC-VSHIFT-PATCH-V4: HARDWAREBASED full3d active");
     }
